@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using JwtTesting.Entities;
+﻿using JwtTesting.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace JwtTesting.Data;
@@ -26,29 +24,29 @@ public partial class ApplicationDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<AspNetRole>(entity =>
+        _ = modelBuilder.Entity<AspNetRole>(entity =>
         {
-            entity.HasIndex(e => e.NormalizedName, "RoleNameIndex")
+            _ = entity.HasIndex(e => e.NormalizedName, "RoleNameIndex")
                 .IsUnique()
                 .HasFilter("([NormalizedName] IS NOT NULL)");
         });
 
-        modelBuilder.Entity<AspNetUser>(entity =>
+        _ = modelBuilder.Entity<AspNetUser>(entity =>
         {
-            entity.HasIndex(e => e.NormalizedUserName, "UserNameIndex")
+            _ = entity.HasIndex(e => e.NormalizedUserName, "UserNameIndex")
                 .IsUnique()
                 .HasFilter("([NormalizedUserName] IS NOT NULL)");
 
-            entity.HasMany(d => d.Roles).WithMany(p => p.Users)
+            _ = entity.HasMany(d => d.Roles).WithMany(p => p.Users)
                 .UsingEntity<Dictionary<string, object>>(
                     "AspNetUserRole",
                     r => r.HasOne<AspNetRole>().WithMany().HasForeignKey("RoleId"),
                     l => l.HasOne<AspNetUser>().WithMany().HasForeignKey("UserId"),
                     j =>
                     {
-                        j.HasKey("UserId", "RoleId");
-                        j.ToTable("AspNetUserRoles");
-                        j.HasIndex(new[] { "RoleId" }, "IX_AspNetUserRoles_RoleId");
+                        _ = j.HasKey("UserId", "RoleId");
+                        _ = j.ToTable("AspNetUserRoles");
+                        _ = j.HasIndex(new[] { "RoleId" }, "IX_AspNetUserRoles_RoleId");
                     });
         });
 

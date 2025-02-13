@@ -8,6 +8,4 @@
         public string Role { get; set; }  // Add this line for the role
 
     }
-
-
 }

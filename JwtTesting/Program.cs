@@ -1,16 +1,13 @@
-using Microsoft.EntityFrameworkCore;
-using System;
-using Scalar.AspNetCore;
-using JwtTesting;
-using Microsoft.AspNetCore.Identity;
-using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using JwtTesting.Entities;
-using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using System.Text;
+using JwtTesting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Scalar.AspNetCore;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
 {
@@ -22,9 +19,9 @@ builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
     .AddDefaultTokenProviders();
 
 // Configure JWT authentication
-var tokenHandler = new JwtSecurityTokenHandler();
-var jwtSettings = builder.Configuration.GetSection("Jwt");
-var key = Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? throw new ArgumentNullException("Jwt:Key", "JWT Key is not configured."));
+JwtSecurityTokenHandler tokenHandler = new();
+IConfigurationSection jwtSettings = builder.Configuration.GetSection("Jwt");
+byte[] key = Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? throw new ArgumentNullException("Jwt:Key", "JWT Key is not configured."));
 
 builder.Services.AddAuthentication(options =>
 {
@@ -73,25 +70,25 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", builder =>
     {
-        builder.AllowAnyOrigin()
+        _ = builder.AllowAnyOrigin()
                .AllowAnyMethod()
                .AllowAnyHeader();
     });
 });
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 
 // Ensure roles are created
-using (var scope = app.Services.CreateScope())
+using (IServiceScope scope = app.Services.CreateScope())
 {
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    var roles = new[] { "Admin", "User" };
+    RoleManager<IdentityRole> roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    string[] roles = new[] { "Admin", "User" };
 
-    foreach (var role in roles)
+    foreach (string? role in roles)
     {
         if (!await roleManager.RoleExistsAsync(role))
         {
-            await roleManager.CreateAsync(new IdentityRole(role));
+            _ = await roleManager.CreateAsync(new IdentityRole(role));
         }
     }
 }
@@ -99,9 +96,9 @@ using (var scope = app.Services.CreateScope())
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    _ = app.MapOpenApi();
 
-    app.MapScalarApiReference("/docs/scalar");
+    _ = app.MapScalarApiReference("/docs/scalar");
 }
 
 app.UseHttpsRedirection();

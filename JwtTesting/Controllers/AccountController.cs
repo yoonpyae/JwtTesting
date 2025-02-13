@@ -1,14 +1,14 @@
-﻿using dotNetProject.Models;
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using dotNetProject.Models;
 using JwtTesting.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace JwtTesting.Controllers
 {
@@ -31,19 +31,19 @@ namespace JwtTesting.Controllers
                 {
                     Success = false,
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Data= null,
+                    Data = null,
                     Message = "Username already exists"
                 });
             }
 
-            var user = new IdentityUser
+            IdentityUser user = new()
             {
                 UserName = model.Username,
                 Email = model.Email,
                 LockoutEnabled = true // Enable lockout for new users
             };
 
-            var result = await _userManager.CreateAsync(user, model.Password); // ✅ ASP.NET Identity automatically hashes the password
+            IdentityResult result = await _userManager.CreateAsync(user, model.Password); // ✅ ASP.NET Identity automatically hashes the password
 
             if (!result.Succeeded)
             {
@@ -58,7 +58,7 @@ namespace JwtTesting.Controllers
             // Assign role to user
             if (!string.IsNullOrEmpty(model.Role))
             {
-                await _userManager.AddToRoleAsync(user, model.Role);
+                _ = await _userManager.AddToRoleAsync(user, model.Role);
             }
 
             return Ok("User registered successfully.");
@@ -82,7 +82,7 @@ namespace JwtTesting.Controllers
         [AllowAnonymous] // ✅ Allow users to log in without authentication
         public async Task<IActionResult> Login([FromBody] LoginDto model)
         {
-            var user = await _userManager.FindByEmailAsync(model.Email);
+            IdentityUser? user = await _userManager.FindByEmailAsync(model.Email);
             if (user == null || user.UserName == null)
             {
                 return Unauthorized("Invalid email or password.");
@@ -93,44 +93,44 @@ namespace JwtTesting.Controllers
                 return Unauthorized("User account is locked out.");
             }
 
-            var result = await _signInManager.PasswordSignInAsync(user.UserName, model.Password, false, false);
+            Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.PasswordSignInAsync(user.UserName, model.Password, false, false);
             if (!result.Succeeded)
             {
-                await _userManager.AccessFailedAsync(user);
+                _ = await _userManager.AccessFailedAsync(user);
 
                 if (await _userManager.GetAccessFailedCountAsync(user) >= 3)
                 {
-                    await _userManager.SetLockoutEnabledAsync(user, true);
-                    await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5));
+                    _ = await _userManager.SetLockoutEnabledAsync(user, true);
+                    _ = await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5));
                 }
 
                 return Unauthorized("Invalid email or password.");
             }
 
-            await _userManager.ResetAccessFailedCountAsync(user);
+            _ = await _userManager.ResetAccessFailedCountAsync(user);
 
-            var (token, refreshToken, refreshTokenExpiry) = await GenerateJwtToken(user);
+            (string token, string refreshToken, DateTime refreshTokenExpiry) = await GenerateJwtToken(user);
             return Ok(new { token, refreshToken, refreshTokenExpiry });
         }
 
         private async Task<(string, string, DateTime)> GenerateJwtToken(IdentityUser user)
         {
-            var jwtSettings = _config.GetSection("Jwt");
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? throw new InvalidOperationException("JWT Key not found")));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            IConfigurationSection jwtSettings = _config.GetSection("Jwt");
+            SymmetricSecurityKey key = new(Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? throw new InvalidOperationException("JWT Key not found")));
+            SigningCredentials creds = new(key, SecurityAlgorithms.HmacSha256);
 
-            var claims = new List<Claim>
-            {
+            List<Claim> claims =
+            [
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
                 new Claim(ClaimTypes.NameIdentifier, user.Id) // ✅ Ensure this is set
-            };
+            ];
 
             // Add roles to claims
-            var roles = await _userManager.GetRolesAsync(user);
+            IList<string> roles = await _userManager.GetRolesAsync(user);
             claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
 
-            var token = new JwtSecurityToken(
+            JwtSecurityToken token = new(
                 issuer: jwtSettings["Issuer"],
                 audience: jwtSettings["Audience"],
                 claims: claims,
@@ -138,11 +138,11 @@ namespace JwtTesting.Controllers
                 signingCredentials: creds
             );
 
-            var (refreshToken, refreshTokenExpiry) = GenerateRefreshToken();
+            (string refreshToken, DateTime refreshTokenExpiry) = GenerateRefreshToken();
 
             // ✅ Always update the refresh token in storage
-            await _userManager.SetAuthenticationTokenAsync(user, "MyApp", "RefreshToken", refreshToken);
-            await _userManager.SetAuthenticationTokenAsync(user, "MyApp", "RefreshTokenExpiry", refreshTokenExpiry.ToString());
+            _ = await _userManager.SetAuthenticationTokenAsync(user, "MyApp", "RefreshToken", refreshToken);
+            _ = await _userManager.SetAuthenticationTokenAsync(user, "MyApp", "RefreshTokenExpiry", refreshTokenExpiry.ToString());
 
             return (new JwtSecurityTokenHandler().WriteToken(token), refreshToken, refreshTokenExpiry);
         }
@@ -150,14 +150,12 @@ namespace JwtTesting.Controllers
 
         private (string, DateTime) GenerateRefreshToken()
         {
-            var randomNumber = new byte[32];
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(randomNumber);
-                var refreshToken = Convert.ToBase64String(randomNumber);
-                var refreshTokenExpiry = DateTime.UtcNow.AddMinutes(3); // Set refresh token to expire in 3 minutes
-                return (refreshToken, refreshTokenExpiry);
-            }
+            byte[] randomNumber = new byte[32];
+            using RandomNumberGenerator rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+            string refreshToken = Convert.ToBase64String(randomNumber);
+            DateTime refreshTokenExpiry = DateTime.UtcNow.AddMinutes(3); // Set refresh token to expire in 3 minutes
+            return (refreshToken, refreshTokenExpiry);
         }
 
         [HttpPost("refresh")]
@@ -169,19 +167,19 @@ namespace JwtTesting.Controllers
                 return BadRequest("Invalid client request: Missing tokens.");
             }
 
-            var principal = GetPrincipalFromExpiredToken(tokenRequest.AccessToken);
+            ClaimsPrincipal? principal = GetPrincipalFromExpiredToken(tokenRequest.AccessToken);
             if (principal == null)
             {
                 return BadRequest("Invalid client request: Could not extract claims.");
             }
 
-            var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value; // FIXED: Use NameIdentifier claim
+            string? userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value; // FIXED: Use NameIdentifier claim
             if (userId == null)
             {
                 return BadRequest("Invalid client request: User ID missing.");
             }
 
-            var user = await _userManager.FindByIdAsync(userId);
+            IdentityUser? user = await _userManager.FindByIdAsync(userId);
             if (user == null)
             {
                 return BadRequest("Invalid client request: User not found.");
@@ -193,7 +191,7 @@ namespace JwtTesting.Controllers
             }
 
             // Generate new tokens
-            var (newAccessToken, newRefreshToken, newRefreshTokenExpiry) = await GenerateJwtToken(user);
+            (string newAccessToken, string newRefreshToken, DateTime newRefreshTokenExpiry) = await GenerateJwtToken(user);
 
             return Ok(new
             {
@@ -208,7 +206,7 @@ namespace JwtTesting.Controllers
         {
             try
             {
-                var tokenValidationParameters = new TokenValidationParameters
+                TokenValidationParameters tokenValidationParameters = new()
                 {
                     ValidateAudience = false,
                     ValidateIssuer = false,
@@ -217,8 +215,8 @@ namespace JwtTesting.Controllers
                     ValidateLifetime = false // Allow expired tokens
                 };
 
-                var tokenHandler = new JwtSecurityTokenHandler();
-                var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken);
+                JwtSecurityTokenHandler tokenHandler = new();
+                ClaimsPrincipal principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken);
 
                 if (securityToken is not JwtSecurityToken jwtToken || !jwtToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
                 {
@@ -226,10 +224,10 @@ namespace JwtTesting.Controllers
                 }
 
                 // ✅ Check if the token is expired
-                var expiryClaim = principal.FindFirst(JwtRegisteredClaimNames.Exp);
+                Claim? expiryClaim = principal.FindFirst(JwtRegisteredClaimNames.Exp);
                 if (expiryClaim != null && long.TryParse(expiryClaim.Value, out long expiry))
                 {
-                    var expiryDate = DateTimeOffset.FromUnixTimeSeconds(expiry).UtcDateTime;
+                    DateTime expiryDate = DateTimeOffset.FromUnixTimeSeconds(expiry).UtcDateTime;
                     if (expiryDate > DateTime.UtcNow)
                     {
                         return null; // Token is still valid, no need to refresh
@@ -247,8 +245,8 @@ namespace JwtTesting.Controllers
 
         private async Task<bool> ValidateRefreshToken(IdentityUser user, string refreshToken)
         {
-            var storedRefreshToken = await _userManager.GetAuthenticationTokenAsync(user, "MyApp", "RefreshToken");
-            var storedRefreshTokenExpiry = await _userManager.GetAuthenticationTokenAsync(user, "MyApp", "RefreshTokenExpiry");
+            string? storedRefreshToken = await _userManager.GetAuthenticationTokenAsync(user, "MyApp", "RefreshToken");
+            string? storedRefreshTokenExpiry = await _userManager.GetAuthenticationTokenAsync(user, "MyApp", "RefreshTokenExpiry");
 
             if (string.IsNullOrEmpty(storedRefreshToken) || string.IsNullOrEmpty(storedRefreshTokenExpiry))
             {
