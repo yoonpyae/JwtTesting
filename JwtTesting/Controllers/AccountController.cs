@@ -39,7 +39,8 @@ namespace JwtTesting.Controllers
             var user = new IdentityUser
             {
                 UserName = model.Username,
-                Email = model.Email
+                Email = model.Email,
+                LockoutEnabled = true // Enable lockout for new users
             };
 
             var result = await _userManager.CreateAsync(user, model.Password); // ✅ ASP.NET Identity automatically hashes the password
@@ -87,11 +88,26 @@ namespace JwtTesting.Controllers
                 return Unauthorized("Invalid email or password.");
             }
 
+            if (await _userManager.IsLockedOutAsync(user))
+            {
+                return Unauthorized("User account is locked out.");
+            }
+
             var result = await _signInManager.PasswordSignInAsync(user.UserName, model.Password, false, false);
             if (!result.Succeeded)
             {
+                await _userManager.AccessFailedAsync(user);
+
+                if (await _userManager.GetAccessFailedCountAsync(user) >= 3)
+                {
+                    await _userManager.SetLockoutEnabledAsync(user, true);
+                    await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5));
+                }
+
                 return Unauthorized("Invalid email or password.");
             }
+
+            await _userManager.ResetAccessFailedCountAsync(user);
 
             var (token, refreshToken, refreshTokenExpiry) = await GenerateJwtToken(user);
             return Ok(new { token, refreshToken, refreshTokenExpiry });
