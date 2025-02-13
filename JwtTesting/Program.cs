@@ -65,14 +65,19 @@ builder.Services.AddAuthentication(options =>
 });
 
 // Add services to the container.
-
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
+builder.Services.AddScoped<RoleManager<IdentityRole>>();
+builder.Services.AddScoped<UserManager<IdentityUser>>();
+
 builder.Services.AddDbContext<ApplicationDbContext>(opt => opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 var app = builder.Build();
+SeedRoles(app.Services,
+    app.Services.GetRequiredService<UserManager<IdentityUser>>(),
+    app.Services.GetRequiredService<RoleManager<IdentityRole>>());
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -104,3 +109,19 @@ app.Use(async (context, next) =>
 app.MapControllers();
 
 app.Run();
+
+static void SeedRoles(IServiceProvider serviceProvider, UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager)
+{
+    string[] roleNames = { "Admin", "User", "Manager" };
+
+    foreach (var roleName in roleNames)
+    {
+        var roleExist = roleManager.RoleExistsAsync(roleName).Result;
+
+        if (!roleExist)
+        {
+            var role = new IdentityRole(roleName);
+            var roleResult = roleManager.CreateAsync(role).Result;
+        }
+    }
+}
