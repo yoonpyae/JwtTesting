@@ -20,12 +20,7 @@ builder.Services.AddIdentity<IdentityUser, IdentityRole>()
 // Configure JWT authentication
 var tokenHandler = new JwtSecurityTokenHandler();
 var jwtSettings = builder.Configuration.GetSection("Jwt");
-
-
-
 var key = Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? throw new ArgumentNullException("Jwt:Key", "JWT Key is not configured."));
-
-
 
 builder.Services.AddAuthentication(options =>
 {
@@ -66,18 +61,36 @@ builder.Services.AddAuthentication(options =>
 
 // Add services to the container.
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-
-builder.Services.AddScoped<RoleManager<IdentityRole>>();
-builder.Services.AddScoped<UserManager<IdentityUser>>();
-
 builder.Services.AddDbContext<ApplicationDbContext>(opt => opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Add CORS policy
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.AllowAnyOrigin()
+               .AllowAnyMethod()
+               .AllowAnyHeader();
+    });
+});
+
 var app = builder.Build();
-SeedRoles(app.Services,
-    app.Services.GetRequiredService<UserManager<IdentityUser>>(),
-    app.Services.GetRequiredService<RoleManager<IdentityRole>>());
+
+// Ensure roles are created
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    var roles = new[] { "Admin", "User" };
+
+    foreach (var role in roles)
+    {
+        if (!await roleManager.RoleExistsAsync(role))
+        {
+            await roleManager.CreateAsync(new IdentityRole(role));
+        }
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -88,6 +101,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors("AllowAll");
 
 app.UseAuthentication();
 
@@ -109,19 +124,3 @@ app.Use(async (context, next) =>
 app.MapControllers();
 
 app.Run();
-
-static void SeedRoles(IServiceProvider serviceProvider, UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager)
-{
-    string[] roleNames = { "Admin", "User", "Manager" };
-
-    foreach (var roleName in roleNames)
-    {
-        var roleExist = roleManager.RoleExistsAsync(roleName).Result;
-
-        if (!roleExist)
-        {
-            var role = new IdentityRole(roleName);
-            var roleResult = roleManager.CreateAsync(role).Result;
-        }
-    }
-}

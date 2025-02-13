@@ -27,7 +27,13 @@ namespace JwtTesting.Controllers
         {
             if (await _userManager.Users.AnyAsync(u => u.Email == model.Email))
             {
-                return BadRequest("User with this email already exists.");
+                return BadRequest(new DefaultResponseModel()
+                {
+                    Success = false,
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Data= null,
+                    Message = "Username already exists"
+                });
             }
 
             var user = new IdentityUser
@@ -40,10 +46,44 @@ namespace JwtTesting.Controllers
 
             if (!result.Succeeded)
             {
-                return BadRequest(result.Errors);
+                return BadRequest(new DefaultResponseModel()
+                {
+                    Success = false,
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Message = "Failed to create user"
+                });
+            }
+
+            // Assign role to user
+            if (!string.IsNullOrEmpty(model.Role))
+            {
+                await _userManager.AddToRoleAsync(user, model.Role);
             }
 
             return Ok("User registered successfully.");
+        }
+
+        [HttpGet("admin")]
+        [Authorize(Roles = "Admin")]
+        public IActionResult AdminAction()
+        {
+            if (!User.IsInRole("Admin"))
+            {
+                return Forbid("You are not authorized to access this resource.");
+            }
+            return Ok("This is an admin-only action.");
+        }
+
+
+        [HttpGet("User")]
+        [Authorize(Roles = "User")]
+        public IActionResult UserAction()
+        {
+            if (!User.IsInRole("User"))
+            {
+                return Forbid("You are not authorized to access this resource.");
+            }
+            return Ok("This is an User-only action.");
         }
 
         [HttpPost("login")]
@@ -72,12 +112,16 @@ namespace JwtTesting.Controllers
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? throw new InvalidOperationException("JWT Key not found")));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-            var claims = new[]
+            var claims = new List<Claim>
             {
-        new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-        new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
-        new Claim(ClaimTypes.NameIdentifier, user.Id) // ✅ Ensure this is set
-    };
+                new Claim(JwtRegisteredClaimNames.Sub, user.Id),
+                new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
+                new Claim(ClaimTypes.NameIdentifier, user.Id) // ✅ Ensure this is set
+            };
+
+            // Add roles to claims
+            var roles = await _userManager.GetRolesAsync(user);
+            claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
 
             var token = new JwtSecurityToken(
                 issuer: jwtSettings["Issuer"],
