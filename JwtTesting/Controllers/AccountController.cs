@@ -67,23 +67,14 @@ namespace JwtTesting.Controllers
         [Authorize(Roles = "Admin")]
         public IActionResult AdminAction()
         {
-            if (!User.IsInRole("Admin"))
-            {
-                return Forbid("You are not authorized to access this resource.");
-            }
             return Ok("This is an admin-only action.");
         }
 
-
-        [HttpGet("User")]
+        [HttpGet("user")]
         [Authorize(Roles = "User")]
         public IActionResult UserAction()
         {
-            if (!User.IsInRole("User"))
-            {
-                return Forbid("You are not authorized to access this resource.");
-            }
-            return Ok("This is an User-only action.");
+            return Ok("This is a user-only action.");
         }
 
         [HttpPost("login")]
