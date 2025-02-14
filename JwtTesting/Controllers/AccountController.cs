@@ -167,7 +167,7 @@ namespace JwtTesting.Controllers
                 issuer: jwtSettings["Issuer"],
                 audience: jwtSettings["Audience"],
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(1), // Access token expires in 1 minute
+                expires: DateTime.UtcNow.AddMinutes(2), // Access token expires in 1 minute
                 signingCredentials: creds
             );
 
