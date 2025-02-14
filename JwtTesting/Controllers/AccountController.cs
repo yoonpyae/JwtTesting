@@ -68,6 +68,7 @@ namespace JwtTesting.Controllers
                 _ = await _userManager.AddToRoleAsync(user, model.Role);
             }
 
+
             _logger.LogInformation("User with email {Email} registered successfully", model.Email);
             return Ok("User registered successfully.");
         }
@@ -303,6 +304,49 @@ namespace JwtTesting.Controllers
 
             return storedRefreshToken == refreshToken;
         }
+
+        [HttpGet("generate-reset-token")]
+        public async Task<IActionResult> GenerateResetToken([FromQuery] string email)
+        {
+            // Find the user by email
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+            {
+                return BadRequest(new { Message = "User not found" });
+            }
+
+            // Generate the password reset token
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+            // Return the token in the response (don't send it via email)
+            return Ok(new { Token = token });
+        }
+
+
+        [HttpPost("reset-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto model)
+        {
+            _logger.LogInformation("Resetting password for email: {Email}", model.Email);
+
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user == null)
+            {
+                _logger.LogWarning("User with email {Email} not found", model.Email);
+                return BadRequest(new { message = "User not found" });
+            }
+
+            var result = await _userManager.ResetPasswordAsync(user, model.Token, model.NewPassword);
+            if (!result.Succeeded)
+            {
+                _logger.LogError("Failed to reset password for email {Email}", model.Email);
+                return BadRequest(new { message = "Failed to reset password", errors = result.Errors });
+            }
+
+            _logger.LogInformation("Password successfully reset for email: {Email}", model.Email);
+            return Ok(new { message = "Password reset successful" });
+        }
+
 
     }
 }
