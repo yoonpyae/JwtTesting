@@ -105,14 +105,11 @@ namespace JwtTesting.Controllers
                 user = await _userManager.FindByEmailAsync(model.UsernameOrEmailOrPhone);
             }
             // Check for phone number (assuming it's a valid phone number format)
-            else if (model.UsernameOrEmailOrPhone.Length >= 10) // You can customize this condition
-            {
-                user = await _userManager.Users.FirstOrDefaultAsync(u => u.PhoneNumber == model.UsernameOrEmailOrPhone);
-            }
-            // Check for username
             else
             {
-                user = await _userManager.FindByNameAsync(model.UsernameOrEmailOrPhone);
+                user = model.UsernameOrEmailOrPhone.Length >= 10
+                    ? await _userManager.Users.FirstOrDefaultAsync(u => u.PhoneNumber == model.UsernameOrEmailOrPhone)
+                    : await _userManager.FindByNameAsync(model.UsernameOrEmailOrPhone);
             }
 
             if (user == null)
@@ -325,14 +322,14 @@ namespace JwtTesting.Controllers
         public async Task<IActionResult> GenerateResetToken([FromQuery] string email)
         {
             // Find the user by email
-            var user = await _userManager.FindByEmailAsync(email);
+            IdentityUser? user = await _userManager.FindByEmailAsync(email);
             if (user == null)
             {
                 return BadRequest(new { Message = "User not found" });
             }
 
             // Generate the password reset token
-            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            string token = await _userManager.GeneratePasswordResetTokenAsync(user);
 
             // Return the token in the response (don't send it via email)
             return Ok(new { Token = token });
@@ -345,14 +342,14 @@ namespace JwtTesting.Controllers
         {
             _logger.LogInformation("Resetting password for email: {Email}", model.Email);
 
-            var user = await _userManager.FindByEmailAsync(model.Email);
+            IdentityUser? user = await _userManager.FindByEmailAsync(model.Email);
             if (user == null)
             {
                 _logger.LogWarning("User with email {Email} not found", model.Email);
                 return BadRequest(new { message = "User not found" });
             }
 
-            var result = await _userManager.ResetPasswordAsync(user, model.Token, model.NewPassword);
+            IdentityResult result = await _userManager.ResetPasswordAsync(user, model.Token, model.NewPassword);
             if (!result.Succeeded)
             {
                 _logger.LogError("Failed to reset password for email {Email}", model.Email);
