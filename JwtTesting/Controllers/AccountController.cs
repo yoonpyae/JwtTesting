@@ -94,24 +94,40 @@ namespace JwtTesting.Controllers
         [AllowAnonymous] // ✅ Allow users to log in without authentication
         public async Task<IActionResult> Login([FromBody] LoginDto model)
         {
-            _logger.LogInformation("User login attempt with email: {Email}", model.Email);
+            _logger.LogInformation("User login attempt with identifier: {Identifier}", model.UsernameOrEmailOrPhone);
 
-            IdentityUser? user = await _userManager.FindByEmailAsync(model.Email);
-            if (user == null || user.UserName == null)
+            // Check if the identifier is email, username, or phone number
+            IdentityUser? user = null;
+
+            // Check for email
+            if (model.UsernameOrEmailOrPhone.Contains('@'))
             {
-                _logger.LogWarning("Invalid login attempt with email: {Email}", model.Email);
+                user = await _userManager.FindByEmailAsync(model.UsernameOrEmailOrPhone);
+            }
+            // Check for phone number (assuming it's a valid phone number format)
+            else if (model.UsernameOrEmailOrPhone.Length >= 10) // You can customize this condition
+            {
+                user = await _userManager.Users.FirstOrDefaultAsync(u => u.PhoneNumber == model.UsernameOrEmailOrPhone);
+            }
+            // Check for username
+            else
+            {
+                user = await _userManager.FindByNameAsync(model.UsernameOrEmailOrPhone);
+            }
 
-                return Unauthorized("Invalid email or password.");
+            if (user == null)
+            {
+                _logger.LogWarning("Invalid login attempt with identifier: {Identifier}", model.UsernameOrEmailOrPhone);
+                return Unauthorized("Invalid username, email, or phone number.");
             }
 
             if (await _userManager.IsLockedOutAsync(user))
             {
-                _logger.LogWarning("User account is locked out for email: {Email}", model.Email);
-
+                _logger.LogWarning("User account is locked out for identifier: {Identifier}", model.UsernameOrEmailOrPhone);
                 return Unauthorized("User account is locked out.");
             }
 
-            Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.PasswordSignInAsync(user.UserName, model.Password, false, false);
+            Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.PasswordSignInAsync(user, model.Password, false, false);
             if (!result.Succeeded)
             {
                 _ = await _userManager.AccessFailedAsync(user);
@@ -121,7 +137,7 @@ namespace JwtTesting.Controllers
                     _ = await _userManager.SetLockoutEnabledAsync(user, true);
                     _ = await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5));
                 }
-                _logger.LogWarning("Invalid login attempt with email: {Email}", model.Email);
+                _logger.LogWarning("Invalid login attempt with identifier: {Identifier}", model.UsernameOrEmailOrPhone);
 
                 return Unauthorized("Invalid email or password.");
             }
@@ -129,7 +145,7 @@ namespace JwtTesting.Controllers
             _ = await _userManager.ResetAccessFailedCountAsync(user);
 
             (string token, string refreshToken, DateTime refreshTokenExpiry) = await GenerateJwtToken(user);
-            _logger.LogInformation("User with email {Email} logged in successfully", model.Email);
+            _logger.LogInformation("User with identifier {Identifier} logged in successfully", model.UsernameOrEmailOrPhone);
             return Ok(new { token, refreshToken, refreshTokenExpiry });
         }
 
